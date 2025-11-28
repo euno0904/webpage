@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>RSA 복호화 시간 시뮬레이션</title>
+  <style>
+    :root {
+      color-scheme: dark light;
+      font-family: "Pretendard", "Segoe UI", sans-serif;
+      --accent: #4f8cff;
+      --accent-weak: rgba(79, 140, 255, 0.15);
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      background: radial-gradient(circle at top, #1f2937, #0f172a);
+      color: #e2e8f0;
+    }
+
+    main {
+      width: min(960px, 90vw);
+      padding: 40px 32px 56px;
+    }
+
+    h1 {
+      margin: 0 0 12px;
+      font-size: clamp(1.8rem, 3vw, 2.4rem);
+      letter-spacing: -0.02em;
+    }
+
+    p.lead {
+      margin: 0 0 32px;
+      font-size: 1rem;
+      color: #cbd5f5;
+      line-height: 1.6;
+    }
+
+    section.panel {
+      background: rgba(15, 23, 42, 0.75);
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 20px;
+      padding: 28px;
+      box-shadow: 0 25px 40px rgba(2, 6, 23, 0.55);
+      backdrop-filter: blur(15px);
+      margin-bottom: 28px;
+    }
+
+    .slider-group + .slider-group {
+      margin-top: 20px;
+    }
+
+    label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.95rem;
+      margin-bottom: 10px;
+      color: #bfdbfe;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--accent);
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+      margin-top: 24px;
+    }
+
+    .stat-card {
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 14px;
+      padding: 16px 18px;
+      background: rgba(15, 23, 42, 0.65);
+    }
+
+    .stat-card span {
+      display: block;
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-bottom: 8px;
+    }
+
+    .stat-card strong {
+      font-size: 1.35rem;
+    }
+
+    .chart {
+      margin-top: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+    }
+
+    .bar {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-size: 0.95rem;
+    }
+
+    .bar-track {
+      position: relative;
+      flex: 1;
+      height: 24px;
+      border-radius: 14px;
+      background: rgba(148, 163, 184, 0.15);
+      overflow: hidden;
+    }
+
+    .bar-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--accent), #7c3aed);
+      transition: width 220ms ease;
+    }
+
+    .bar.small .bar-fill {
+      background: linear-gradient(90deg, #38bdf8, #4f46e5);
+    }
+
+    .note,
+    .meta {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-top: 18px;
+      line-height: 1.4;
+    }
+
+    .meta {
+      margin-top: 12px;
+      border-left: 2px solid rgba(148, 163, 184, 0.4);
+      padding-left: 12px;
+    }
+
+    .curve-panel {
+      margin-top: 28px;
+      padding-top: 24px;
+      border-top: 1px dashed rgba(148, 163, 184, 0.3);
+    }
+
+    .curve-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .curve-header h3 {
+      margin: 0;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+
+    .curve-header span {
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+
+    #curveChart {
+      width: 100%;
+      max-width: 100%;
+      border-radius: 12px;
+      background: radial-gradient(circle at top left, rgba(148, 163, 184, 0.15), transparent),
+        radial-gradient(circle at bottom right, rgba(79, 70, 229, 0.25), rgba(15, 23, 42, 0.95));
+      border: 1px solid rgba(148, 163, 184, 0.35);
+      box-shadow: 0 18px 35px rgba(15, 23, 42, 0.7);
+    }
+
+    @media (max-width: 640px) {
+      main {
+        padding: 28px 16px 40px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>RSA 복호화 시간 감각 시뮬레이터</h1>
+      <p class="lead">
+        실제 거대 정수를 직접 계산하지 않고, <strong>상대적인 연산량</strong>을 바탕으로
+        p, q 크기 변화가 암·복호화 시간에 미치는 영향을 빠르게 가늠할 수 있는 도구입니다.
+      </p>
+    </header>
+
+    <section class="panel">
+      <h2>프라임 크기 조절</h2>
+      <div class="slider-group">
+        <label>
+          p 비트 길이
+          <span id="pBitsLabel">1024 bit</span>
+        </label>
+        <input type="range" min="256" max="4096" step="64" value="1024" id="pBits" />
+      </div>
+      <div class="slider-group">
+        <label>
+          q 비트 길이
+          <span id="qBitsLabel">1024 bit</span>
+        </label>
+        <input type="range" min="256" max="4096" step="64" value="1024" id="qBits" />
+      </div>
+
+      <div class="stats">
+        <div class="stat-card">
+          <span>모듈러스 n 비트 길이 (추정)</span>
+          <strong id="nBits">2048 bit</strong>
+        </div>
+        <div class="stat-card">
+          <span>암호화 시간 (추정)</span>
+          <strong id="encTime">25 ms</strong>
+        </div>
+        <div class="stat-card">
+          <span>복호화 시간 (추정)</span>
+          <strong id="decTime">350 ms</strong>
+        </div>
+      </div>
+
+      <p class="meta">
+        모듈러스 <strong>n = p × q</strong>는 RSA 공개키의 핵심 크기를 결정하는 값입니다. 슬라이더로
+        조절한 두 소수의 비트 길이를 합산해 n의 비트를 근사하고, 그 길이가 길수록 연산해야 할 숫자가
+        커지기 때문에 암·복호화 시간이 함께 늘어납니다.
+      </p>
+
+      <div class="chart">
+        <div class="bar">
+          <span>암호화 시간</span>
+          <div class="bar-track">
+            <div class="bar-fill" id="encryptionBar"></div>
+          </div>
+          <span id="encryptionValue">25 ms</span>
+        </div>
+        <div class="bar small">
+          <span>복호화 시간</span>
+          <div class="bar-track">
+            <div class="bar-fill" id="decryptionBar"></div>
+          </div>
+          <span id="decryptionValue">350 ms</span>
+        </div>
+      </div>
+
+      <p class="note">
+        • 복호화 시간은 모듈러스 비트 길이의 세제곱에 비례한다고 가정했습니다 (O(n³)), 2048비트 기준
+          약 350&nbsp;ms를 베이스라인으로 잡았습니다.<br />
+        • 암호화는 작은 공개 지수(e)를 쓰므로 제곱 복잡도(O(n²)) 모델에 25&nbsp;ms 베이스라인을
+          적용했습니다.<br />
+        • 실제 구현, 하드웨어, 파라미터 선택에 따라 절대 시간은 크게 달라질 수 있는 점을 감안하세요.
+      </p>
+
+      <!-- 추가: 비트수에 따른 암·복호화 시간 곡선 그래프 -->
+      <div class="curve-panel">
+        <div class="curve-header">
+          <h3>비트 길이에 따른 암·복호화 시간 곡선</h3>
+          <span>(512 ~ 4096비트 구간의 개념적 추정 값)</span>
+        </div>
+        <canvas id="curveChart" width="860" height="320"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const BASELINE_BITS = 2048;
+    const BASE_DEC_MS = 350;
+    const BASE_ENC_MS = 25;
+
+    const pBitsInput = document.getElementById("pBits");
+    const qBitsInput = document.getElementById("qBits");
+    const pBitsLabel = document.getElementById("pBitsLabel");
+    const qBitsLabel = document.getElementById("qBitsLabel");
+    const nBitsLabel = document.getElementById("nBits");
+    const encTimeLabel = document.getElementById("encTime");
+    const decTimeLabel = document.getElementById("decTime");
+    const encryptionBar = document.getElementById("encryptionBar");
+    const decryptionBar = document.getElementById("decryptionBar");
+    const encryptionValueLabel = document.getElementById("encryptionValue");
+    const decryptionValueLabel = document.getElementById("decryptionValue");
+
+    function interpolateNBits(pBits, qBits) {
+      return pBits + qBits;
+    }
+
+    function computeDecryptionTime(nBits) {
+      const ratio = nBits / BASELINE_BITS;
+      return BASE_DEC_MS * Math.pow(ratio, 3);
+    }
+    function computeEncryptionTime(nBits) {
+      const ratio = nBits / BASELINE_BITS;
+      return BASE_ENC_MS * Math.pow(ratio, 2);
+    }
+    function formatTime(ms) {
+      if (ms >= 1000) return (ms/1000).toFixed(2) + " s";
+      return Math.round(ms) + " ms";
+    }
+
+    const curveBits = [512, 768, 1024, 1536, 2048, 3072, 4096];
+
+    function drawCurveChart() {
+      const canvas = document.getElementById("curveChart");
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      const w = canvas.width;
+      const h = canvas.height;
+
+      ctx.clearRect(0,0,w,h);
+
+      const paddingLeft = 60;
+      const paddingRight = 20;
+      const paddingTop = 30;
+      const paddingBottom = 40;
+
+      const encData = curveBits.map(b => computeEncryptionTime(b));
+      const decData = curveBits.map(b => computeDecryptionTime(b));
+
+      const minX = Math.min(...curveBits);
+      const maxX = Math.max(...curveBits);
+      const maxY = Math.max(...encData, ...decData);
+
+      const xScale = x =>
+        paddingLeft + ((x - minX) / (maxX - minX)) * (w - paddingLeft - paddingRight);
+      const yScale = y =>
+        h - paddingBottom - (y / maxY) * (h - paddingTop - paddingBottom);
+
+      // 배경 그리드
+      ctx.strokeStyle = "rgba(148,163,184,0.15)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = paddingTop + (i / 4) * (h - paddingTop - paddingBottom);
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, y);
+        ctx.lineTo(w - paddingRight, y);
+        ctx.stroke();
+      }
+
+      // 축
+      ctx.strokeStyle = "rgba(148,163,184,0.8)";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(paddingLeft, paddingTop);
+      ctx.lineTo(paddingLeft, h - paddingBottom);
+      ctx.lineTo(w - paddingRight, h - paddingBottom);
+      ctx.stroke();
+
+      ctx.font = "11px system-ui";
+      ctx.fillStyle = "rgba(148,163,184,0.9)";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "bottom";
+      ctx.fillText("시간", paddingLeft + 4, paddingTop - 10);
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.fillText("비트 길이", w - paddingRight - 50, h - 10);
+
+      // x축 눈금
+      curveBits.forEach(b => {
+        const x = xScale(b);
+        const y = h - paddingBottom;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y + 4);
+        ctx.stroke();
+        ctx.fillText(String(b), x, y + 6);
+      });
+
+      // y축 눈금
+      ctx.textAlign = "right";
+      ctx.textBaseline = "middle";
+      for (let i = 0; i <= 4; i++) {
+        const value = (i / 4) * maxY;
+        const y = paddingTop + (1 - i / 4) * (h - paddingTop - paddingBottom);
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft - 4, y);
+        ctx.lineTo(paddingLeft, y);
+        ctx.stroke();
+        ctx.fillText(formatTime(value), paddingLeft - 8, y);
+      }
+
+      function plotCurve(data, color) {
+        ctx.beginPath();
+        data.forEach((v, i) => {
+          const x = xScale(curveBits[i]);
+          const y = yScale(v);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
+      plotCurve(encData, "rgba(56,189,248,0.9)"); // 파란 선
+      plotCurve(decData, "rgba(239,68,68,0.9)");  // 빨간 선
+
+      // 범례
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      ctx.font = "10px system-ui";
+      const legendY = paddingTop + 15;
+      ctx.fillStyle = "rgba(56,189,248,0.9)";
+      ctx.fillRect(w - paddingRight - 100, legendY - 6, 12, 2);
+      ctx.fillStyle = "rgba(148,163,184,0.9)";
+      ctx.fillText("암호화", w - paddingRight - 85, legendY);
+      ctx.fillStyle = "rgba(239,68,68,0.9)";
+      ctx.fillRect(w - paddingRight - 100, legendY + 8, 12, 2);
+      ctx.fillStyle = "rgba(148,163,184,0.9)";
+      ctx.fillText("복호화", w - paddingRight - 85, legendY + 14);
+    }
+
+    function update() {
+      const pBits = Number(pBitsInput.value);
+      const qBits = Number(qBitsInput.value);
+      const nBits = interpolateNBits(pBits, qBits);
+      const encryptionTime = computeEncryptionTime(nBits);
+      const decryptionTime = computeDecryptionTime(nBits);
+
+      pBitsLabel.textContent = `${pBits.toLocaleString()} bit`;
+      qBitsLabel.textContent = `${qBits.toLocaleString()} bit`;
+      nBitsLabel.textContent = `${nBits.toLocaleString()} bit`;
+      encTimeLabel.textContent = formatTime(encryptionTime);
+      decTimeLabel.textContent = formatTime(decryptionTime);
+
+      const maxBarTime = Math.max(encryptionTime, decryptionTime);
+      encryptionBar.style.width = `${Math.min((encryptionTime / maxBarTime) * 100, 100)}%`;
+      decryptionBar.style.width = `${Math.min((decryptionTime / maxBarTime) * 100, 100)}%`;
+      encryptionValueLabel.textContent = formatTime(encryptionTime);
+      decryptionValueLabel.textContent = formatTime(decryptionTime);
+    }
+
+    pBitsInput.addEventListener("input", update);
+    qBitsInput.addEventListener("input", update);
+
+    // 초기화
+    update();
+    window.addEventListener("load", drawCurveChart);
+    if (document.readyState === "complete") {
+      drawCurveChart();
+    }
+  </script>
+</body>
+</html>
